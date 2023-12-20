@@ -2,6 +2,8 @@
 import logging
 from kiteconnect import KiteConnect
 
+from datetime import datetime, timedelta
+
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -27,11 +29,15 @@ data = kite.generate_session(previousAccessToken, api_secret="")
 kite.set_access_token(data["access_token"])
 
 # Get instruments
-# data = kite.instruments()
+data = kite.instruments()
 
-histData = kite.historical_data('408065', '2023-12-11', "2023-12-14", 'minute', False, True)
+# print(type(data))
+# print(" Instrument data: ")
+# print(data)
 
-print(histData)
+histData = kite.historical_data('5195009', '2023-12-11', "2023-12-19", 'minute', False, True)
+
+# print(histData)
 
 # print(type(histData))
 
@@ -47,22 +53,35 @@ scaled_data = scaler.fit_transform(df[features])
 
 
 # Function to create sequences
-def create_dataset(data, time_step=1):
+def create_dataset(data, time_step=1, future_step=1):
     X, y = [], []
-    for i in range(len(data) - time_step - 1):
+    for i in range(len(data) - time_step - future_step):
         X.append(data[i:(i + time_step), :])  # All features
-        y.append(data[i + time_step, 0])  # Predicting the 'close' price
+        y.append(data[i + time_step + future_step - 1, 0])  # Predicting the 'close' price at future_step
     return np.array(X), np.array(y)
 
 
 # Splitting dataset into train and test split
+# Define time steps and future steps
 time_step = 100
-X, y = create_dataset(scaled_data, time_step)
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+future_step_10 = 10  # 10 minutes into the future
+future_step_30 = 30  # 30 minutes into the future
+future_step_60 = 60  # 60 minutes into the future
 
-# Reshape input to be [samples, time steps, features] which is required for LSTM
-X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], len(features))
-X_test = X_test.reshape(X_test.shape[0], X_test.shape[1], len(features))
+
+# Create datasets for each future step
+X_10, y_10 = create_dataset(scaled_data, time_step, future_step_10)
+X_30, y_30 = create_dataset(scaled_data, time_step, future_step_30)
+X_60, y_60 = create_dataset(scaled_data, time_step, future_step_60)
+
+
+# Example: Train and predict for 10th minute
+# Splitting dataset into train and test split for 10th minute
+X_train_10, X_test_10, y_train_10, y_test_10 = train_test_split(X_10, y_10, test_size=0.2, random_state=42)
+
+# Reshape input for LSTM
+X_train_10 = X_train_10.reshape(X_train_10.shape[0], X_train_10.shape[1], len(features))
+X_test_10 = X_test_10.reshape(X_test_10.shape[0], X_test_10.shape[1], len(features))
 
 # Create the LSTM model
 model = Sequential()
@@ -73,29 +92,35 @@ model.add(Dense(units=1))
 
 # Compile the model
 model.compile(optimizer='adam', loss='mean_squared_error')
-print("x train shape : ")
-print(X_train.shape)
-print("y train shape : ")
-print(y_train.shape)
+# print("x train shape : ")
+# print(X_train.shape)
+# print("y train shape : ")
+# print(y_train.shape)
 
 # Train the model
-model.fit(X_train, y_train, batch_size=1, epochs=1)
+model.fit(X_train_10, y_train_10, batch_size=1, epochs=1)
 
-# Predicting next 60 minutes
+# Predicting the stock price for the 10th minute
+# You need to select the appropriate time window from your data
+last_time_step_data = scaled_data[-(time_step+future_step_10):]
+prediction_input = last_time_step_data[:time_step]
+prediction_input = prediction_input.reshape(1, time_step, len(features))
+predicted_price_10 = model.predict(prediction_input)
+
 # Note: This part of the code is very simplified and should be adjusted for your specific needs
-last_60_minutes = scaled_data[-time_step:]
-last_60_minutes = last_60_minutes.reshape(1, time_step, len(features))
-predicted_price = model.predict(last_60_minutes)
+# last_60_minutes = scaled_data[-time_step:]
+# last_60_minutes = last_60_minutes.reshape(1, time_step, len(features))
+# predicted_price = model.predict(last_60_minutes)
 # predicted_price = scaler.inverse_transform(predicted_price)  # Inverse transform to get actual value
 
 # print("Predicted Close Price for next 60 minutes:", predicted_price[0][0])
 
 # Assuming 'predicted_price' has the shape (1, 1)
 # Create a dummy array with the same number of features
-dummy_array = np.zeros((predicted_price.shape[0], scaled_data.shape[1]))
+dummy_array = np.zeros((predicted_price_10.shape[0], scaled_data.shape[1]))
 
 # Place the predicted price in the first column (or the relevant column for 'close' price)
-dummy_array[:, 0] = predicted_price.ravel()
+dummy_array[:, 0] = predicted_price_10.ravel()
 
 # Apply inverse transform
 inverse_transformed = scaler.inverse_transform(dummy_array)
@@ -103,4 +128,13 @@ inverse_transformed = scaler.inverse_transform(dummy_array)
 # Extract the relevant predicted price
 final_predicted_price = inverse_transformed[:, 0]  # Assuming 'close' price is the first feature
 
-print("Predicted Close Price for next minute:", final_predicted_price[0])
+# Get the current time
+current_time = datetime.now()
+
+# Calculate the time for the 10th minute from now
+time_10th_minute_from_now = current_time + timedelta(minutes=10)
+
+print("Predicted Close Price for 10th minute:", final_predicted_price[0])
+
+# Print the calculated time
+print("Time for the 10th minute from now:", time_10th_minute_from_now.strftime('%Y-%m-%d %H:%M:%S'))  # 1207.50 (actual val)   1241.53 (pred val)
