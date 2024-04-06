@@ -2,6 +2,15 @@ import argparse
 from kiteconnect import KiteConnect
 import datetime
 
+# Define the mapping of instrument tokens to symbols
+token_symbol_map = {
+    "408065": "INFY",
+    "738561": "RELIANCE",
+    "884737": "TATAMOTORS",
+    "341249": "HDFCBANK",
+    "779521": "SBIN",
+    "4752385": "LTTS"
+}
 
 # Function to fetch data
 def fetch_data(kite, start_date, end_date, instrument_token, interval):
@@ -34,12 +43,16 @@ def main(api_key, access_token, api_secret, start_date, end_date, instrument_tok
     # Get current run date in YYYYMMDD format
     run_date = datetime.datetime.now().strftime("%Y%m%d")
 
+
     for instrument_token in instrument_tokens:
         # Fetch data
         histData = fetch_data(kite, start_date, end_date, instrument_token, interval)
 
+        # Get the symbol from the token_symbol_map
+        symbol = token_symbol_map.get(instrument_token, "Unknown")
+
         # Filename based on runDate, instrument ID, and "symbol" (assuming instrument_token as symbol here)
-        filename = f"{run_date}-{instrument_token}-symbol.psv"
+        filename = f"{run_date}-{instrument_token}-{symbol}.psv"
 
         # Format and write data to a PSV file
         write_to_psv(histData, run_date, instrument_token, filename)
